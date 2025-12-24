@@ -25,7 +25,7 @@ export default function PrivacyPolicyPage() {
               1. Introduction
             </h2>
             <p className="mb-4">
-              Welcome to Vitacheck ("we," "our," or "us"). Your privacy is
+              Welcome to Vitacheck (&quot;we,&quot; &quot;our,&quot; or &quot;us&quot;). Your privacy is
               important to us, and we are committed to protecting any
               information you may provide while using our website.
             </p>
@@ -222,7 +222,7 @@ export default function PrivacyPolicyPage() {
             </h2>
             <p>
               We may update this Privacy Policy from time to time. If changes
-              occur, the "Last Updated" date at the top of this page will be
+              occur, the &quot;Last Updated&quot; date at the top of this page will be
               revised. Continued use of Vitacheck after policy updates
               constitutes acceptance of the changes.
             </p>

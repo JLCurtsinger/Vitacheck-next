@@ -19,13 +19,14 @@ function CheckingContent() {
   useEffect(() => {
     // Simulate async work with delay (800-1200ms)
     const delay = Math.random() * 400 + 800 // Random between 800-1200ms
+    const itemsParam = itemIds.join(",")
     const timer = setTimeout(() => {
       // Navigate to results with same query params
-      router.push(`/results?items=${itemIds.join(",")}`)
+      router.push(`/results?items=${itemsParam}`)
     }, delay)
 
     return () => clearTimeout(timer)
-  }, [router, itemIds.join(",")])
+  }, [router, itemIds])
 
   return (
     <main className="min-h-screen bg-white">

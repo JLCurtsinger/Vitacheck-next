@@ -27,9 +27,9 @@ export default function TermsAndConditionsPage() {
               1. Introduction
             </h2>
             <p className="mb-4">
-              Welcome to Vitacheck ("we," "our," or "us"). By accessing or using
+              Welcome to Vitacheck (&quot;we,&quot; &quot;our,&quot; or &quot;us&quot;). By accessing or using
               our website, you agree to be bound by these Terms and Conditions
-              ("Terms").
+              (&quot;Terms&quot;).
             </p>
             <div className="border-l-4 border-destructive bg-destructive/10 p-4 my-4 rounded-r">
               <p className="font-semibold mb-2">Important Disclaimer:</p>
@@ -184,7 +184,7 @@ export default function TermsAndConditionsPage() {
               You agree to indemnify, defend, and hold harmless Vitacheck, its
               operators, affiliates, and partners from and against any claims,
               liabilities, damages, losses, costs, expenses, or fees (including
-              reasonable attorneys' fees) arising from your violation of these
+              reasonable attorneys&apos; fees) arising from your violation of these
               Terms or your use of the website.
             </p>
           </section>
