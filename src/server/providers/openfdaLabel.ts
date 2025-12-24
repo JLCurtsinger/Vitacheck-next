@@ -6,6 +6,92 @@ import type { ProviderResponse, FdaLabelResult } from "../types"
 const OPENFDA_BASE_URL = "https://api.fda.gov/drug/label.json"
 
 /**
+ * Common NSAIDs and related drugs that should not appear in warnings for other medications
+ */
+const OTHER_NSAIDS = [
+  "naproxen",
+  "naproxen sodium",
+  "aspirin",
+  "acetylsalicylic acid",
+  "diclofenac",
+  "diclofenac sodium",
+  "celecoxib",
+  "meloxicam",
+  "indomethacin",
+  "ketorolac",
+  "piroxicam",
+  "sulindac",
+  "tolmetin",
+  "etodolac",
+  "nabumetone",
+  "oxaprozin",
+  "fenoprofen",
+  "flurbiprofen",
+  "ketoprofen",
+]
+
+/**
+ * Check if text contains mentions of other NSAIDs (excluding the queried medication)
+ */
+function containsOtherNSAIDs(text: string, queriedMedication: string): boolean {
+  const textLower = text.toLowerCase()
+  const queriedLower = queriedMedication.toLowerCase()
+  
+  for (const nsaid of OTHER_NSAIDS) {
+    const nsaidLower = nsaid.toLowerCase()
+    // Skip if the NSAID is the queried medication itself
+    if (nsaidLower === queriedLower || queriedLower.includes(nsaidLower) || nsaidLower.includes(queriedLower)) {
+      continue
+    }
+    // Check if the NSAID appears in the text
+    if (textLower.includes(nsaidLower)) {
+      return true
+    }
+  }
+  
+  return false
+}
+
+/**
+ * Check if label data contains other NSAIDs in generic_name or substance_name
+ */
+function labelContainsOtherNSAIDs(result: any, queriedMedication: string): boolean {
+  const queriedLower = queriedMedication.toLowerCase()
+  
+  // Check generic_name array
+  if (result.openfda?.generic_name && Array.isArray(result.openfda.generic_name)) {
+    for (const name of result.openfda.generic_name) {
+      const nameLower = String(name).toLowerCase()
+      // If this name matches the queried medication, skip
+      if (nameLower === queriedLower || nameLower.includes(queriedLower) || queriedLower.includes(nameLower)) {
+        continue
+      }
+      // Check if this name is another NSAID
+      if (containsOtherNSAIDs(nameLower, queriedMedication)) {
+        return true
+      }
+    }
+  }
+  
+  // Check substance_name array
+  if (result.openfda?.substance_name && Array.isArray(result.openfda.substance_name)) {
+    for (const name of result.openfda.substance_name) {
+      const nameLower = String(name).toLowerCase()
+      // If this name matches the queried medication, skip
+      if (nameLower === queriedLower || nameLower.includes(queriedLower) || queriedLower.includes(nameLower)) {
+        continue
+      }
+      // Check if this name is another NSAID
+      if (containsOtherNSAIDs(nameLower, queriedMedication)) {
+        return true
+      }
+    }
+  }
+  
+  return false
+}
+
+/**
  * Fetch drug label warnings from openFDA.
  */
 export async function fetchFdaLabel(
@@ -131,7 +217,7 @@ export async function fetchFdaLabel(
 }
 
 /**
- * Extract FDA label data from response (for RxCUI matches - no filtering needed)
+ * Extract FDA label data from response (for RxCUI matches - still need to filter for other NSAIDs)
  */
 function extractFdaLabelData(data: any, normalizedValue: string, requireMatch: boolean = false): FdaLabelResult | null {
   if (!data.results || !Array.isArray(data.results) || data.results.length === 0) {
@@ -139,6 +225,12 @@ function extractFdaLabelData(data: any, normalizedValue: string, requireMatch: b
   }
   
   const result = data.results[0]
+  
+  // Check if label contains other NSAIDs - reject if so
+  if (labelContainsOtherNSAIDs(result, normalizedValue)) {
+    return null
+  }
+  
   return extractWarningsAndMetadata(result, normalizedValue, requireMatch)
 }
 
@@ -211,6 +303,11 @@ function extractFdaLabelDataWithFilter(
     }
     
     if (matches) {
+      // Check if label contains other NSAIDs - reject if so
+      if (labelContainsOtherNSAIDs(result, normalizedValue)) {
+        continue
+      }
+      
       return extractWarningsAndMetadata(result, normalizedValue, true)
     }
   }
@@ -231,6 +328,19 @@ function extractWarningsAndMetadata(result: any, normalizedValue: string, requir
     warnings = result.warnings
   } else if (result.warnings) {
     warnings = [String(result.warnings)]
+  }
+  
+  // Filter warnings: reject any that mention other NSAIDs
+  if (warnings) {
+    warnings = warnings.filter(warning => {
+      const warningText = String(warning)
+      return !containsOtherNSAIDs(warningText, normalizedValue)
+    })
+    
+    // If all warnings were filtered out, set to undefined
+    if (warnings.length === 0) {
+      warnings = undefined
+    }
   }
   
   // Extract product name

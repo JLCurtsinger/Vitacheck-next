@@ -142,44 +142,60 @@ export async function checkInteractions(
             fda_label_rxcui: cached.fda_label_rxcui,
           })
           
-          // Also check CMS cache
-          const cmsCached = await getCmsUsageCache(item.normalized)
-          if (cmsCached && cmsCached.beneficiaries) {
-            cacheStats.cmsCacheHits++
-            medLookups.set(item.normalized, {
-              ...medLookups.get(item.normalized)!,
-              cms_beneficiaries: cmsCached.beneficiaries,
-            })
-          } else {
-            cacheStats.cmsCacheMisses++
-            // Fetch CMS (non-blocking)
-            const cmsResult = await fetchCmsPartDUsage(item.normalized, cached.rxnorm_rxcui || undefined)
-            trackProviderStatus(`cms-partd-${item.normalized}`, cmsResult)
-            if (cmsResult.data) {
+          // Also check CMS cache (only if includeCms is true)
+          if (request.options?.includeCms) {
+            const cmsCached = await getCmsUsageCache(item.normalized)
+            if (cmsCached && cmsCached.beneficiaries) {
+              cacheStats.cmsCacheHits++
               medLookups.set(item.normalized, {
                 ...medLookups.get(item.normalized)!,
-                cms_beneficiaries: cmsResult.data.beneficiaries,
+                cms_beneficiaries: cmsCached.beneficiaries,
               })
+            } else {
+              cacheStats.cmsCacheMisses++
+              // Fetch CMS (non-blocking)
+              const cmsResult = await fetchCmsPartDUsage(item.normalized, cached.rxnorm_rxcui || undefined)
+              trackProviderStatus(`cms-partd-${item.normalized}`, cmsResult)
+              if (cmsResult.data) {
+                medLookups.set(item.normalized, {
+                  ...medLookups.get(item.normalized)!,
+                  cms_beneficiaries: cmsResult.data.beneficiaries,
+                })
+              }
             }
+          } else {
+            // CMS not requested - mark as not attempted
+            trackProviderStatus(`cms-partd-${item.normalized}`, null, false)
           }
           return
         }
         
         cacheStats.medLookupMisses++
         
-        // Fetch all lookups in parallel
-        const [rxnormResult, suppaiResult, fdaLabelResult, cmsResult] = await Promise.all([
+        // Fetch all lookups in parallel (CMS only if includeCms is true)
+        const lookupPromises: Promise<any>[] = [
           lookupRxCUI(item.normalized),
           lookupSuppAiId(item.normalized),
           fetchFdaLabel(item.normalized),
-          fetchCmsPartDUsage(item.normalized),
-        ])
+        ]
+        
+        if (request.options?.includeCms) {
+          lookupPromises.push(fetchCmsPartDUsage(item.normalized))
+        } else {
+          lookupPromises.push(Promise.resolve({ data: null }))
+        }
+        
+        const [rxnormResult, suppaiResult, fdaLabelResult, cmsResult] = await Promise.all(lookupPromises)
         
         // Track provider statuses
         trackProviderStatus(`rxnorm-lookup-${item.normalized}`, rxnormResult)
         trackProviderStatus(`suppai-lookup-${item.normalized}`, suppaiResult)
         trackProviderStatus(`fda-label-${item.normalized}`, fdaLabelResult)
-        trackProviderStatus(`cms-partd-${item.normalized}`, cmsResult)
+        if (request.options?.includeCms) {
+          trackProviderStatus(`cms-partd-${item.normalized}`, cmsResult)
+        } else {
+          trackProviderStatus(`cms-partd-${item.normalized}`, null, false)
+        }
         
         // Track RxCUI resolution
         if (debug) {
@@ -200,7 +216,7 @@ export async function checkInteractions(
           suppai_id: suppaiResult.data?.id || null,
           fda_label_warnings: fdaLabelResult.data?.warnings || null,
           fda_label_rxcui: fdaLabelResult.data?.rxcui || null,
-          cms_beneficiaries: cmsResult.data?.beneficiaries || null,
+          cms_beneficiaries: request.options?.includeCms ? (cmsResult.data?.beneficiaries || null) : null,
         })
       })
     )

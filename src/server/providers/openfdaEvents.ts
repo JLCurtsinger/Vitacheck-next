@@ -45,7 +45,21 @@ export async function fetchAdverseEvents(
       },
     })
     
+    // Handle HTTP errors: 404 or no results means empty data, not an error
     if (!response.ok) {
+      // 404 or 400 typically means no matching records - return empty result
+      if (response.status === 404 || response.status === 400) {
+        return {
+          data: {
+            totalEvents: 0,
+            seriousEvents: 0,
+            outcomes: {},
+          },
+          cached: false,
+          timingMs: Date.now() - startTime,
+        }
+      }
+      // Other HTTP errors are true failures
       return {
         data: null,
         error: `HTTP ${response.status}`,
@@ -61,7 +75,25 @@ export async function fetchAdverseEvents(
     let seriousEvents = 0
     const outcomes: Record<string, number> = {}
     
-    if (data.results && Array.isArray(data.results)) {
+    // Handle empty results gracefully
+    if (!data.results || !Array.isArray(data.results) || data.results.length === 0) {
+      // Check if meta indicates no results
+      if (data.meta && data.meta.results && data.meta.results.total === 0) {
+        return {
+          data: {
+            totalEvents: 0,
+            seriousEvents: 0,
+            outcomes: {},
+          },
+          cached: false,
+          timingMs: Date.now() - startTime,
+        }
+      }
+      // If meta.total exists but results array is empty, use meta.total
+      if (data.meta && data.meta.results && data.meta.results.total) {
+        totalEvents = data.meta.results.total
+      }
+    } else {
       for (const result of data.results) {
         const count = result.count || 0
         totalEvents += count
@@ -123,7 +155,21 @@ export async function fetchSingleDrugAdverseEvents(
       },
     })
     
+    // Handle HTTP errors: 404 or no results means empty data, not an error
     if (!response.ok) {
+      // 404 or 400 typically means no matching records - return empty result
+      if (response.status === 404 || response.status === 400) {
+        return {
+          data: {
+            totalEvents: 0,
+            seriousEvents: 0,
+            outcomes: {},
+          },
+          cached: false,
+          timingMs: Date.now() - startTime,
+        }
+      }
+      // Other HTTP errors are true failures
       return {
         data: null,
         error: `HTTP ${response.status}`,
@@ -138,7 +184,25 @@ export async function fetchSingleDrugAdverseEvents(
     let seriousEvents = 0
     const outcomes: Record<string, number> = {}
     
-    if (data.results && Array.isArray(data.results)) {
+    // Handle empty results gracefully
+    if (!data.results || !Array.isArray(data.results) || data.results.length === 0) {
+      // Check if meta indicates no results
+      if (data.meta && data.meta.results && data.meta.results.total === 0) {
+        return {
+          data: {
+            totalEvents: 0,
+            seriousEvents: 0,
+            outcomes: {},
+          },
+          cached: false,
+          timingMs: Date.now() - startTime,
+        }
+      }
+      // If meta.total exists but results array is empty, use meta.total
+      if (data.meta && data.meta.results && data.meta.results.total) {
+        totalEvents = data.meta.results.total
+      }
+    } else {
       for (const result of data.results) {
         const count = result.count || 0
         totalEvents += count

@@ -60,6 +60,7 @@ export interface InteractionCheckRequest {
   }>
   options?: {
     includeAi?: boolean
+    includeCms?: boolean
     debug?: boolean
   }
 }
