@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useEffect } from "react"
+import { Suspense, useEffect, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -9,7 +9,8 @@ import { mockSuggestions } from "@/lib/mockSuggestions"
 function CheckingContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const itemIds = searchParams.get("items")?.split(",") || []
+  const itemsParam = searchParams.get("items") ?? ""
+  const itemIds = useMemo(() => (itemsParam ? itemsParam.split(",") : []), [itemsParam])
 
   // Get item labels from IDs
   const checkedItems = itemIds

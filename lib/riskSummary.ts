@@ -1,4 +1,5 @@
 import { type PairResult, type InteractionSeverity } from "./mockResults"
+export type { InteractionSeverity }
 
 export interface TopRiskItem {
   headline: string
