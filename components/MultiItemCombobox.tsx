@@ -42,7 +42,11 @@ export function MultiItemCombobox({
   const containerRef = React.useRef<HTMLDivElement>(null)
   const debounceTimerRef = React.useRef<NodeJS.Timeout>()
   const mouseDownRef = React.useRef(false)
+  const abortControllerRef = React.useRef<AbortController | null>(null)
 
+  // Remote suggestions from API
+  const [remoteSuggestions, setRemoteSuggestions] = React.useState<SuggestionItem[]>([])
+  
   // Debounced filtering (250ms)
   // Initialize as empty - only show suggestions when user engages
   const [filteredSuggestions, setFilteredSuggestions] =
@@ -54,23 +58,91 @@ export function MultiItemCombobox({
       return
     }
 
+    // Cancel any in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current)
     }
 
-    debounceTimerRef.current = setTimeout(() => {
-      const filtered = filterSuggestions(inputValue, allSuggestions)
-      // Filter out already selected items
+    const trimmedInput = inputValue.trim()
+
+    // Clear remote suggestions if input is too short
+    if (trimmedInput.length < 2) {
+      setRemoteSuggestions([])
+      // Use fallback mock suggestions filtering
+      const filtered = filterSuggestions(trimmedInput, allSuggestions)
       const available = filtered.filter(
         (item) => !items.some((selected) => selected.id === item.id)
       )
       setFilteredSuggestions(available)
       setHighlightedIndex(-1)
+      return
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      // Create new AbortController for this request
+      const abortController = new AbortController()
+      abortControllerRef.current = abortController
+
+      // Fetch from API
+      const query = encodeURIComponent(trimmedInput)
+      fetch(`/api/rxterms/autocomplete?q=${query}`, {
+        signal: abortController.signal,
+      })
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`)
+          }
+          return res.json()
+        })
+        .then((data: { results: { display: string; value: string }[] }) => {
+          // Check if request was aborted
+          if (abortController.signal.aborted) {
+            return
+          }
+
+          // Map API results to SuggestionItem format
+          const mapped: SuggestionItem[] = data.results.map((result) => ({
+            id: result.value,
+            label: result.display,
+            kind: "medication" as const,
+          }))
+
+          // Filter out already selected items
+          const available = mapped.filter(
+            (item) => !items.some((selected) => selected.id === item.id)
+          )
+
+          setRemoteSuggestions(mapped)
+          setFilteredSuggestions(available)
+          setHighlightedIndex(-1)
+        })
+        .catch((error) => {
+          // Silently fall back to mock suggestions on error
+          // (network error, abort, or API error)
+          if (error.name === "AbortError") {
+            return // Request was cancelled, ignore
+          }
+
+          // Fallback to mock suggestions filtering
+          const filtered = filterSuggestions(trimmedInput, allSuggestions)
+          const available = filtered.filter(
+            (item) => !items.some((selected) => selected.id === item.id)
+          )
+          setFilteredSuggestions(available)
+          setHighlightedIndex(-1)
+        })
     }, 250)
 
     return () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current)
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
       }
     }
   }, [inputValue, allSuggestions, items, isOpen])
