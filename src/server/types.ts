@@ -62,6 +62,7 @@ export interface InteractionCheckRequest {
     includeAi?: boolean
     includeCms?: boolean
     debug?: boolean
+    forceRefresh?: boolean
   }
 }
 

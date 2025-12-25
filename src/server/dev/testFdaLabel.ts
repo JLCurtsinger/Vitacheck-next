@@ -1,10 +1,36 @@
 /**
  * Test script to verify openFDA label matching fix.
  * Ensures ibuprofen does NOT return warnings that mention "naproxen".
+ * Shows which openFDA fields were matched.
  * Run with: npx tsx src/server/dev/testFdaLabel.ts
  */
 
 import { fetchFdaLabel } from "../providers/openfdaLabel"
+
+/**
+ * Helper to fetch raw openFDA data for inspection
+ */
+async function fetchRawFdaData(normalizedValue: string) {
+  const OPENFDA_BASE_URL = "https://api.fda.gov/drug/label.json"
+  
+  // Try generic_name search
+  const url = `${OPENFDA_BASE_URL}?search=${encodeURIComponent(`openfda.generic_name:"${normalizedValue}"`)}&limit=3`
+  
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+    })
+    
+    if (response.ok) {
+      const data = await response.json()
+      return data.results?.[0] || null
+    }
+  } catch (error) {
+    // Ignore
+  }
+  
+  return null
+}
 
 async function main() {
   console.log("Testing openFDA label matching fix...\n")
@@ -20,24 +46,42 @@ async function main() {
     console.log("-".repeat(50))
     
     try {
+      // Fetch raw data to show matched fields
+      const rawData = await fetchRawFdaData(testCase.drug)
+      if (rawData) {
+        console.log("\n📋 Matched openFDA fields:")
+        if (rawData.openfda?.generic_name) {
+          console.log(`   generic_name: ${JSON.stringify(rawData.openfda.generic_name)}`)
+        }
+        if (rawData.openfda?.substance_name) {
+          console.log(`   substance_name: ${JSON.stringify(rawData.openfda.substance_name)}`)
+        }
+        if (rawData.openfda?.brand_name) {
+          console.log(`   brand_name: ${JSON.stringify(rawData.openfda.brand_name)}`)
+        }
+        if (rawData.openfda?.rxcui) {
+          console.log(`   rxcui: ${JSON.stringify(rawData.openfda.rxcui)}`)
+        }
+      }
+      
       const result = await fetchFdaLabel(testCase.drug)
       
       if (result.error) {
-        console.log(`❌ Error: ${result.error}`)
+        console.log(`\n❌ Error: ${result.error}`)
         continue
       }
       
       if (!result.data) {
-        console.log("⚠️  No label data found")
+        console.log("\n⚠️  No label data found")
         continue
       }
       
-      console.log(`✅ Label data found`)
+      console.log(`\n✅ Label data found`)
       console.log(`   Product Name: ${result.data.productName || "N/A"}`)
       console.log(`   RxCUI: ${result.data.rxcui || "N/A"}`)
       
       if (result.data.warnings && result.data.warnings.length > 0) {
-        console.log(`   Warnings (${result.data.warnings.length}):`)
+        console.log(`\n   Warnings (${result.data.warnings.length}):`)
         
         let foundMismatch = false
         for (const warning of result.data.warnings) {
@@ -59,11 +103,11 @@ async function main() {
           console.log(`\n✅ PASSED: No mismatched warnings found`)
         }
       } else {
-        console.log(`   No warnings found`)
+        console.log(`\n   No warnings found`)
         console.log(`\n✅ PASSED: No warnings to check`)
       }
       
-      console.log(`   Timing: ${result.timingMs}ms`)
+      console.log(`\n   Timing: ${result.timingMs}ms`)
       console.log(`   Cached: ${result.cached}`)
     } catch (error) {
       console.error(`❌ Exception:`, error)

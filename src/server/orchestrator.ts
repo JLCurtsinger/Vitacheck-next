@@ -128,12 +128,35 @@ export async function checkInteractions(
     }
   >()
   
+  const forceRefresh = request.options?.forceRefresh === true
+  
   await Promise.all(
     normalizedItems.map((item) =>
       upstreamLimiter(async () => {
-        // Check cache
-        const cached = await getMedLookupCache(item.normalized)
+        // Check cache (unless forceRefresh is true)
+        const cached = await getMedLookupCache(item.normalized, forceRefresh)
+        
+        // Check if cached negative results are stale (older than 24 hours)
+        let needsRxNormRefresh = false
+        let needsSuppAiRefresh = false
+        
         if (cached) {
+          const updatedAt = new Date(cached.updated_at)
+          const now = new Date()
+          const hoursSinceUpdate = (now.getTime() - updatedAt.getTime()) / (1000 * 60 * 60)
+          
+          // Check if negative RxNorm result is stale
+          if (cached.rxnorm_rxcui === null && hoursSinceUpdate > 24) {
+            needsRxNormRefresh = true
+          }
+          
+          // Check if negative SUPP.AI result is stale
+          if (cached.suppai_id === null && hoursSinceUpdate > 24) {
+            needsSuppAiRefresh = true
+          }
+        }
+        
+        if (cached && !needsRxNormRefresh && !needsSuppAiRefresh) {
           cacheStats.medLookupHits++
           medLookups.set(item.normalized, {
             rxnorm_rxcui: cached.rxnorm_rxcui,
@@ -142,19 +165,47 @@ export async function checkInteractions(
             fda_label_rxcui: cached.fda_label_rxcui,
           })
           
+          // Track cached provider statuses
+          trackProviderStatus(`rxnorm-lookup-${item.normalized}`, {
+            data: cached.rxnorm_rxcui ? { rxcui: cached.rxnorm_rxcui } : null,
+            cached: true,
+            timingMs: 0,
+          })
+          trackProviderStatus(`suppai-lookup-${item.normalized}`, {
+            data: cached.suppai_id ? { id: cached.suppai_id } : null,
+            cached: true,
+            timingMs: 0,
+          })
+          trackProviderStatus(`fda-label-${item.normalized}`, {
+            data: cached.fda_label_warnings ? { warnings: cached.fda_label_warnings, rxcui: cached.fda_label_rxcui } : null,
+            cached: true,
+            timingMs: 0,
+          })
+          
+          // Track RxCUI resolution
+          if (debug) {
+            rxcuiResolutions[item.normalized] = cached.rxnorm_rxcui || null
+          }
+          
           // Also check CMS cache (only if includeCms is true)
           if (request.options?.includeCms) {
-            const cmsCached = await getCmsUsageCache(item.normalized)
+            const cmsCached = await getCmsUsageCache(item.normalized, forceRefresh)
             if (cmsCached && cmsCached.beneficiaries) {
               cacheStats.cmsCacheHits++
               medLookups.set(item.normalized, {
                 ...medLookups.get(item.normalized)!,
                 cms_beneficiaries: cmsCached.beneficiaries,
               })
+              trackProviderStatus(`cms-partd-${item.normalized}`, {
+                data: { beneficiaries: cmsCached.beneficiaries },
+                cached: true,
+                timingMs: 0,
+              })
             } else {
               cacheStats.cmsCacheMisses++
               // Fetch CMS (non-blocking)
-              const cmsResult = await fetchCmsPartDUsage(item.normalized, cached.rxnorm_rxcui || undefined)
+              const rxnormRxcui = cached?.rxnorm_rxcui || medLookups.get(item.normalized)?.rxnorm_rxcui || undefined
+              const cmsResult = await fetchCmsPartDUsage(item.normalized, rxnormRxcui)
               trackProviderStatus(`cms-partd-${item.normalized}`, cmsResult)
               if (cmsResult.data) {
                 medLookups.set(item.normalized, {
@@ -167,6 +218,53 @@ export async function checkInteractions(
             // CMS not requested - mark as not attempted
             trackProviderStatus(`cms-partd-${item.normalized}`, null, false)
           }
+          
+          // If we need to refresh stale negative results, do it now
+          if (needsRxNormRefresh || needsSuppAiRefresh) {
+            const refreshPromises: Promise<any>[] = []
+            if (needsRxNormRefresh) {
+              refreshPromises.push(lookupRxCUI(item.normalized))
+            } else {
+              refreshPromises.push(Promise.resolve({ data: cached.rxnorm_rxcui ? { rxcui: cached.rxnorm_rxcui } : null, cached: false, timingMs: 0 }))
+            }
+            if (needsSuppAiRefresh) {
+              refreshPromises.push(lookupSuppAiId(item.normalized))
+            } else {
+              refreshPromises.push(Promise.resolve({ data: cached.suppai_id ? { id: cached.suppai_id } : null, cached: false, timingMs: 0 }))
+            }
+            
+            const [rxnormRefreshResult, suppaiRefreshResult] = await Promise.all(refreshPromises)
+            
+            // Update cache with refreshed results
+            await setMedLookupCache(item.normalized, {
+              rxnorm_rxcui: needsRxNormRefresh ? (rxnormRefreshResult.data?.rxcui || null) : cached.rxnorm_rxcui,
+              suppai_id: needsSuppAiRefresh ? (suppaiRefreshResult.data?.id || null) : cached.suppai_id,
+              fda_label_warnings: cached.fda_label_warnings,
+              fda_label_rxcui: cached.fda_label_rxcui,
+            })
+            
+            // Update in-memory cache
+            medLookups.set(item.normalized, {
+              rxnorm_rxcui: needsRxNormRefresh ? (rxnormRefreshResult.data?.rxcui || null) : cached.rxnorm_rxcui,
+              suppai_id: needsSuppAiRefresh ? (suppaiRefreshResult.data?.id || null) : cached.suppai_id,
+              fda_label_warnings: cached.fda_label_warnings,
+              fda_label_rxcui: cached.fda_label_rxcui,
+            })
+            
+            // Track refreshed provider statuses (with attempted:true and ms>0)
+            if (needsRxNormRefresh) {
+              trackProviderStatus(`rxnorm-lookup-${item.normalized}`, rxnormRefreshResult)
+            }
+            if (needsSuppAiRefresh) {
+              trackProviderStatus(`suppai-lookup-${item.normalized}`, suppaiRefreshResult)
+            }
+            
+            // Update RxCUI resolution if refreshed
+            if (debug && needsRxNormRefresh) {
+              rxcuiResolutions[item.normalized] = rxnormRefreshResult.data?.rxcui || null
+            }
+          }
+          
           return
         }
         
@@ -233,19 +331,51 @@ export async function checkInteractions(
     pairs.map((pair) =>
       pairLimiter(async () => {
         const pairKey = generatePairKey(pair.a, pair.b)
+        const pairKeyForDebug = `${pair.a}-${pair.b}`
         
-        // Check cache
-        const cached = await getPairInteractionCache(pairKey)
+        const lookupA = medLookups.get(pair.a)!
+        const lookupB = medLookups.get(pair.b)!
+        
+        // Check cache (unless forceRefresh is true)
+        const cached = await getPairInteractionCache(pairKey, forceRefresh)
         if (cached) {
           cacheStats.pairCacheHits++
           pairResults.set(pairKey, cached)
+          
+          // Track provider statuses for cached pairs (mark as cached)
+          const cachedSources = Array.isArray(cached.sources) ? cached.sources : []
+          if (lookupA.rxnorm_rxcui && lookupB.rxnorm_rxcui) {
+            trackProviderStatus(`rxnorm-interactions-${pairKeyForDebug}`, {
+              data: cachedSources.some((s: any) => s.name === "RxNorm") ? {} : null,
+              cached: true,
+              timingMs: 0,
+            })
+          } else {
+            trackProviderStatus(`rxnorm-interactions-${pairKeyForDebug}`, null, false)
+          }
+          trackProviderStatus(`suppai-interactions-${pairKeyForDebug}`, {
+            data: cachedSources.some((s: any) => s.name === "SUPP.AI") ? {} : null,
+            cached: true,
+            timingMs: 0,
+          })
+          trackProviderStatus(`fda-adverse-events-${pairKeyForDebug}`, {
+            data: cachedSources.some((s: any) => s.name === "openFDA Adverse Events") ? {} : null,
+            cached: true,
+            timingMs: 0,
+          })
+          if (request.options?.includeAi) {
+            trackProviderStatus(`ai-literature-${pairKeyForDebug}`, {
+              data: cachedSources.some((s: any) => s.name === "AI Literature") ? {} : null,
+              cached: true,
+              timingMs: 0,
+            })
+          } else {
+            trackProviderStatus(`ai-literature-${pairKeyForDebug}`, null, false)
+          }
           return
         }
         
         cacheStats.pairCacheMisses++
-        
-        const lookupA = medLookups.get(pair.a)!
-        const lookupB = medLookups.get(pair.b)!
         
         // Fetch all provider data in parallel
         const providerPromises: Promise<any>[] = []
@@ -285,7 +415,6 @@ export async function checkInteractions(
         const [rxnormResult, suppaiResult, adverseEventsResult, aiResult] = await Promise.all(providerPromises)
         
         // Track provider statuses for pair
-        const pairKeyForDebug = `${pair.a}-${pair.b}`
         if (lookupA.rxnorm_rxcui && lookupB.rxnorm_rxcui) {
           trackProviderStatus(`rxnorm-interactions-${pairKeyForDebug}`, rxnormResult)
         } else {
@@ -301,20 +430,25 @@ export async function checkInteractions(
         
         // Standardize all sources
         const sources: InteractionSource[] = []
-        let hasProviderFailure = false
+        
+        // Track which interaction providers were attempted and their success status
+        const rxnormAttempted = lookupA.rxnorm_rxcui && lookupB.rxnorm_rxcui
+        const rxnormOk = rxnormAttempted && !rxnormResult.error
+        const suppaiAttempted = !!process.env.SUPPAI_API_KEY
+        const suppaiOk = suppaiAttempted && !suppaiResult.error
+        const adverseEventsAttempted = true // Always attempted
+        const adverseEventsOk = !adverseEventsResult.error
+        const aiAttempted = !!request.options?.includeAi
+        const aiOk = aiAttempted && !aiResult.error
         
         if (rxnormResult.data) {
           const standardized = standardizeRxNorm(rxnormResult.data, pair.a, pair.b)
           if (standardized) sources.push(standardized)
-        } else if (rxnormResult.error && lookupA.rxnorm_rxcui && lookupB.rxnorm_rxcui) {
-          hasProviderFailure = true
         }
         
         if (suppaiResult.data) {
           const standardized = standardizeSuppAi(suppaiResult.data, pair.a, pair.b)
           sources.push(...standardized)
-        } else if (suppaiResult.error && process.env.SUPPAI_API_KEY) {
-          hasProviderFailure = true
         }
         
         if (adverseEventsResult.data) {
@@ -326,37 +460,50 @@ export async function checkInteractions(
             lookupB.cms_beneficiaries || undefined
           )
           if (standardized) sources.push(standardized)
-        } else if (adverseEventsResult.error) {
-          hasProviderFailure = true
         }
         
         if (aiResult.data) {
           sources.push(aiResult.data)
-        } else if (aiResult.error && request.options?.includeAi) {
-          hasProviderFailure = true
         }
         
         // Merge sources by origin
         const mergedSources = mergeSources(sources)
         
         // Calculate consensus severity
-        // Fix: If no sources but checks succeeded (no hard failures), use "none" instead of "unknown"
         let severity = calculateConsensusSeverity(mergedSources)
-        if (severity === "unknown" && mergedSources.length === 0 && !hasProviderFailure) {
-          // All providers checked successfully but found no interactions
-          severity = "none"
+        
+        // Check if RxNorm interactions was attempted and failed
+        if (rxnormAttempted && !rxnormOk) {
+          // RxNorm check failed - set severity to unknown, confidence to 0
+          severity = "unknown"
+        } else if (severity === "unknown" && mergedSources.length === 0) {
+          // Only return severity "none" when sources.length === 0 AND all attempted providers returned ok:true
+          const allAttemptedProvidersOk = [
+            rxnormAttempted ? rxnormOk : true, // If not attempted, consider it "ok" (not required)
+            suppaiAttempted ? suppaiOk : true,
+            adverseEventsAttempted ? adverseEventsOk : true,
+            aiAttempted ? aiOk : true,
+          ].every(Boolean)
+          
+          if (allAttemptedProvidersOk) {
+            // All attempted providers checked successfully but found no interactions
+            severity = "none"
+          }
         }
         
         // Calculate overall confidence
         let confidence = calculateOverallConfidence(mergedSources)
-        // If severity is "none" and we have successful checks, set baseline confidence
-        if (severity === "none" && mergedSources.length === 0 && !hasProviderFailure) {
+        
+        // If RxNorm check failed, set confidence to 0
+        if (rxnormAttempted && !rxnormOk) {
+          confidence = 0
+        } else if (severity === "none" && mergedSources.length === 0) {
           // Set baseline confidence based on which sources were successfully checked
           const checkedSources = []
-          if (lookupA.rxnorm_rxcui && lookupB.rxnorm_rxcui && !rxnormResult.error) checkedSources.push("RxNorm")
-          if (!suppaiResult.error && process.env.SUPPAI_API_KEY) checkedSources.push("SUPP.AI")
-          if (!adverseEventsResult.error) checkedSources.push("openFDA Adverse Events")
-          if (request.options?.includeAi && !aiResult.error) checkedSources.push("AI Literature")
+          if (rxnormOk) checkedSources.push("RxNorm")
+          if (suppaiOk) checkedSources.push("SUPP.AI")
+          if (adverseEventsOk) checkedSources.push("openFDA Adverse Events")
+          if (aiOk) checkedSources.push("AI Literature")
           
           // Baseline confidence: 0.3 for 1 source, 0.5 for 2+, 0.7 for 3+
           if (checkedSources.length >= 3) {
@@ -369,14 +516,34 @@ export async function checkInteractions(
         }
         
         // Build summary and key notes
-        const summary = mergedSources.length > 0
-          ? mergedSources[0].summary
-          : `No significant interactions found between ${pair.aOriginal} and ${pair.bOriginal}`
+        // Only return "No significant interactions found" if at least one primary source ran successfully
+        // Primary sources: RxNorm interactions, openFDA pair events, SUPP.AI interactions
+        const primarySourcesAttempted = [
+          rxnormOk,
+          adverseEventsOk,
+          suppaiOk,
+        ].filter(Boolean).length
+        
+        let summary: string
+        if (mergedSources.length > 0) {
+          summary = mergedSources[0].summary
+        } else if (primarySourcesAttempted > 0) {
+          // At least one primary source ran successfully and found no interactions
+          summary = `No significant interactions found between ${pair.aOriginal} and ${pair.bOriginal}`
+        } else {
+          // No primary sources were attempted (missing identifiers or API keys)
+          summary = `Limited evidence available for ${pair.aOriginal} and ${pair.bOriginal}. Could not confirm interactions due to unavailable sources.`
+        }
         
         const keyNotes = mergedSources
           .slice(0, 3)
           .map((s) => s.summary.substring(0, 150))
           .filter((note) => note.length > 0)
+        
+        // Add keyNote if RxNorm check failed
+        if (rxnormAttempted && !rxnormOk) {
+          keyNotes.unshift("Interaction check failed: Unable to verify interactions through RxNorm database.")
+        }
         
         const result: InteractionResult = {
           itemA: pair.aOriginal,
@@ -543,12 +710,13 @@ export async function checkInteractions(
   }
   
   // Log (non-blocking)
+  const firstPair = pairResults.size > 0 ? Array.from(pairResults.values())[0] : undefined
   logInteractionCheck(
     request.items,
     {
-      severity: triples.length > 0 ? triples[0].severity : pairs.length > 0 ? pairResults.values().next().value.severity : "unknown",
-      confidence: triples.length > 0 ? triples[0].confidence : pairs.length > 0 ? pairResults.values().next().value.confidence : 0,
-      sourceCount: triples.length > 0 ? triples[0].sources.length : pairs.length > 0 ? pairResults.values().next().value.sources.length : 0,
+      severity: triples.length > 0 ? triples[0].severity : firstPair?.severity ?? "unknown",
+      confidence: triples.length > 0 ? triples[0].confidence : firstPair?.confidence ?? 0,
+      sourceCount: triples.length > 0 ? triples[0].sources.length : firstPair?.sources.length ?? 0,
     },
     totalMs,
     cacheStats

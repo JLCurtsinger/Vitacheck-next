@@ -11,12 +11,38 @@ export const runtime = "nodejs"
  * 
  * Main endpoint for interaction checking.
  * Accepts medication items and returns interaction analysis.
+ * 
+ * Note: If you encounter weird runtime errors, try deleting .next and restarting the dev server.
  */
 export async function POST(req: NextRequest) {
   const requestId = randomUUID().slice(0, 8)
   
   try {
-    const body = await req.json()
+    // Parse JSON with explicit error handling
+    let body: any
+    try {
+      body = await req.json()
+    } catch (jsonError) {
+      console.error("[/api/interactions/check] JSON parse error", {
+        requestId,
+        error: jsonError instanceof Error ? {
+          name: jsonError.name,
+          message: jsonError.message,
+          stack: jsonError.stack,
+        } : jsonError,
+      })
+      return NextResponse.json(
+        { error: "Invalid JSON", requestId },
+        { status: 400 }
+      )
+    }
+    
+    // Route reached breadcrumb
+    console.log("[/api/interactions/check] start", {
+      requestId,
+      itemCount: body?.items?.length,
+      options: body?.options,
+    })
     
     // Validate request
     if (!body.items || !Array.isArray(body.items) || body.items.length === 0) {
@@ -36,9 +62,19 @@ export async function POST(req: NextRequest) {
       }
     }
     
+    // Validate and normalize options
+    // Supports: debug, includeAi, includeCms, forceRefresh (all optional booleans)
+    const options = body.options || {}
+    const normalizedOptions: InteractionCheckRequest["options"] = {
+      debug: typeof options.debug === "boolean" ? options.debug : undefined,
+      includeAi: typeof options.includeAi === "boolean" ? options.includeAi : undefined,
+      includeCms: typeof options.includeCms === "boolean" ? options.includeCms : undefined,
+      forceRefresh: typeof options.forceRefresh === "boolean" ? options.forceRefresh : false,
+    }
+    
     const request: InteractionCheckRequest = {
       items: body.items,
-      options: body.options || {},
+      options: normalizedOptions,
     }
     
     // Run orchestrator
@@ -61,24 +97,48 @@ export async function POST(req: NextRequest) {
         )
       }
       
-      // Log unexpected errors with requestId
-      console.error("[interactions/check]", {
+      // Log unexpected errors with requestId (dev-safe, no env vars or secrets)
+      console.error("[/api/interactions/check]", {
         requestId,
-        name: error?.name,
-        message: error?.message,
-        stack: error?.stack,
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
       })
       
-      return NextResponse.json(
-        { error: "An error occurred while checking interactions. Please try again.", requestId },
-        { status: 500 }
-      )
+      // Build error response
+      const errorResponse: any = {
+        error: "An error occurred while checking interactions. Please try again.",
+        requestId,
+      }
+      
+      // Include dev details in development mode only
+      if (process.env.NODE_ENV !== "production") {
+        errorResponse.devMessage = error.message
+        errorResponse.devStack = error.stack
+      }
+      
+      return NextResponse.json(errorResponse, { status: 500 })
     }
     
-    return NextResponse.json(
-      { error: "An unexpected error occurred", requestId },
-      { status: 500 }
-    )
+    // Log non-Error objects
+    console.error("[/api/interactions/check]", {
+      requestId,
+      error: error,
+    })
+    
+    // Build error response for non-Error objects
+    const errorResponse: any = {
+      error: "An unexpected error occurred",
+      requestId,
+    }
+    
+    // Include dev details in development mode only
+    if (process.env.NODE_ENV !== "production") {
+      errorResponse.devMessage = String(error)
+      errorResponse.devStack = undefined
+    }
+    
+    return NextResponse.json(errorResponse, { status: 500 })
   }
 }
 

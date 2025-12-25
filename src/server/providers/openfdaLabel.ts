@@ -58,6 +58,40 @@ function containsOtherNSAIDs(text: string, queriedMedication: string): boolean {
 function labelContainsOtherNSAIDs(result: any, queriedMedication: string): boolean {
   const queriedLower = queriedMedication.toLowerCase()
   
+  // Special case: if querying ibuprofen, reject labels that indicate naproxen/naproxen sodium
+  if (queriedLower === "ibuprofen") {
+    // Check generic_name array
+    if (result.openfda?.generic_name && Array.isArray(result.openfda.generic_name)) {
+      for (const name of result.openfda.generic_name) {
+        const nameLower = String(name).toLowerCase()
+        if (nameLower.includes("naproxen")) {
+          return true
+        }
+      }
+    }
+    
+    // Check substance_name array
+    if (result.openfda?.substance_name && Array.isArray(result.openfda.substance_name)) {
+      for (const name of result.openfda.substance_name) {
+        const nameLower = String(name).toLowerCase()
+        if (nameLower.includes("naproxen")) {
+          return true
+        }
+      }
+    }
+    
+    // Check brand_name array
+    if (result.openfda?.brand_name && Array.isArray(result.openfda.brand_name)) {
+      for (const name of result.openfda.brand_name) {
+        const nameLower = String(name).toLowerCase()
+        if (nameLower.includes("naproxen")) {
+          return true
+        }
+      }
+    }
+  }
+  
+  // General check for other NSAIDs
   // Check generic_name array
   if (result.openfda?.generic_name && Array.isArray(result.openfda.generic_name)) {
     for (const name of result.openfda.generic_name) {
@@ -224,14 +258,118 @@ function extractFdaLabelData(data: any, normalizedValue: string, requireMatch: b
     return null
   }
   
+  // Log normalized term and number of candidate records
+  console.log(`[openFDA Label] normalized term: "${normalizedValue}", candidate records: ${data.results.length}`)
+  
   const result = data.results[0]
+  
+  // Determine which field was used (for RxCUI matches, check what fields are available)
+  let matchedField = "rxcui"
+  if (result.openfda?.generic_name && Array.isArray(result.openfda.generic_name)) {
+    for (const name of result.openfda.generic_name) {
+      const nameLower = String(name).toLowerCase()
+      if (nameLower === normalizedValue.toLowerCase()) {
+        matchedField = "generic_name"
+        break
+      }
+    }
+  }
+  if (matchedField === "rxcui" && result.openfda?.substance_name && Array.isArray(result.openfda.substance_name)) {
+    for (const name of result.openfda.substance_name) {
+      const nameLower = String(name).toLowerCase()
+      if (nameLower === normalizedValue.toLowerCase() || nameLower.includes(normalizedValue.toLowerCase())) {
+        matchedField = "substance_name"
+        break
+      }
+    }
+  }
+  
+  // Check if label's primary ingredient matches (reject if different primary ingredient)
+  // For RxCUI matches, be more lenient - only reject clear mismatches
+  if (!isPrimaryIngredientMatch(result, normalizedValue, false)) {
+    return null
+  }
   
   // Check if label contains other NSAIDs - reject if so
   if (labelContainsOtherNSAIDs(result, normalizedValue)) {
     return null
   }
   
-  return extractWarningsAndMetadata(result, normalizedValue, requireMatch)
+  const extracted = extractWarningsAndMetadata(result, normalizedValue, requireMatch)
+  
+  // Log which record was selected and warnings count
+  if (extracted) {
+    const warningsCount = extracted.warnings ? extracted.warnings.length : 0
+    console.log(`[openFDA Label] selected record: ${matchedField}, warnings count: ${warningsCount}`)
+  }
+  
+  return extracted
+}
+
+/**
+ * Check if a label's primary ingredient matches the queried medication
+ * Returns true if the label is for the queried medication, false if it's for a different primary ingredient
+ * @param requireMatch - if true, requires an explicit match; if false (for RxCUI matches), only rejects clear mismatches
+ */
+function isPrimaryIngredientMatch(result: any, queriedMedication: string, requireMatch: boolean = true): boolean {
+  const queriedLower = queriedMedication.toLowerCase()
+  
+  // Prefer exact match on generic_name (case-insensitive)
+  if (result.openfda?.generic_name && Array.isArray(result.openfda.generic_name)) {
+    for (const name of result.openfda.generic_name) {
+      const nameLower = String(name).toLowerCase()
+      if (nameLower === queriedLower) {
+        return true
+      }
+    }
+  }
+  
+  // Check substance_name for exact match or inclusion
+  if (result.openfda?.substance_name && Array.isArray(result.openfda.substance_name)) {
+    for (const name of result.openfda.substance_name) {
+      const nameLower = String(name).toLowerCase()
+      if (nameLower === queriedLower || nameLower.includes(queriedLower)) {
+        return true
+      }
+    }
+  }
+  
+  // Check generic_name for inclusion (less strict)
+  if (result.openfda?.generic_name && Array.isArray(result.openfda.generic_name)) {
+    for (const name of result.openfda.generic_name) {
+      const nameLower = String(name).toLowerCase()
+      if (nameLower.includes(queriedLower)) {
+        return true
+      }
+    }
+  }
+  
+  // Check if any primary ingredient field contains other NSAIDs as primary ingredient
+  // If generic_name or substance_name contains another NSAID as the primary ingredient, reject
+  if (result.openfda?.generic_name && Array.isArray(result.openfda.generic_name)) {
+    for (const name of result.openfda.generic_name) {
+      const nameLower = String(name).toLowerCase()
+      // Check if this is a different NSAID (not the queried one)
+      for (const nsaid of OTHER_NSAIDS) {
+        const nsaidLower = nsaid.toLowerCase()
+        if (nsaidLower !== queriedLower && 
+            !queriedLower.includes(nsaidLower) && 
+            !nsaidLower.includes(queriedLower) &&
+            (nameLower === nsaidLower || nameLower.includes(nsaidLower))) {
+          // This label is primarily for a different NSAID - always reject
+          return false
+        }
+      }
+    }
+  }
+  
+  // If requireMatch is false (for RxCUI matches), accept unless we found a clear mismatch above
+  if (!requireMatch) {
+    return true
+  }
+  
+  // Otherwise, require an explicit match
+  return false
 }
 
 /**
@@ -246,14 +384,38 @@ function extractFdaLabelDataWithFilter(
     return null
   }
   
+  // Log normalized term and number of candidate records
+  console.log(`[openFDA Label] normalized term: "${normalizedValue}", candidate records: ${data.results.length}`)
+  
   const normalizedLower = normalizedValue.toLowerCase()
   
   // Find first result that matches
   for (const result of data.results) {
     let matches = false
     
+    // Strategy 1: Prefer exact match on generic_name
     if (fieldType === "generic_name" || fieldType === "any") {
       if (result.openfda?.generic_name && Array.isArray(result.openfda.generic_name)) {
+        for (const name of result.openfda.generic_name) {
+          const nameLower = String(name).toLowerCase()
+          if (nameLower === normalizedLower) {
+            matches = true
+            break
+          }
+        }
+      }
+      // Also check non-openfda generic_name
+      if (!matches && result.generic_name && Array.isArray(result.generic_name)) {
+        for (const name of result.generic_name) {
+          const nameLower = String(name).toLowerCase()
+          if (nameLower === normalizedLower) {
+            matches = true
+            break
+          }
+        }
+      }
+      // Fallback to includes match
+      if (!matches && result.openfda?.generic_name && Array.isArray(result.openfda.generic_name)) {
         for (const name of result.openfda.generic_name) {
           if (String(name).toLowerCase().includes(normalizedLower)) {
             matches = true
@@ -271,6 +433,20 @@ function extractFdaLabelDataWithFilter(
       }
     }
     
+    // Strategy 2: Check substance_name (prefer exact or includes)
+    if (!matches && (fieldType === "generic_name" || fieldType === "any")) {
+      if (result.openfda?.substance_name && Array.isArray(result.openfda.substance_name)) {
+        for (const name of result.openfda.substance_name) {
+          const nameLower = String(name).toLowerCase()
+          if (nameLower === normalizedLower || nameLower.includes(normalizedLower)) {
+            matches = true
+            break
+          }
+        }
+      }
+    }
+    
+    // Strategy 3: Check brand_name (less preferred)
     if (!matches && (fieldType === "brand_name" || fieldType === "any")) {
       if (result.openfda?.brand_name && Array.isArray(result.openfda.brand_name)) {
         for (const name of result.openfda.brand_name) {
@@ -290,25 +466,51 @@ function extractFdaLabelDataWithFilter(
       }
     }
     
-    if (!matches && fieldType === "any") {
-      // Also check substance_name as fallback
-      if (result.openfda?.substance_name && Array.isArray(result.openfda.substance_name)) {
-        for (const name of result.openfda.substance_name) {
-          if (String(name).toLowerCase().includes(normalizedLower)) {
-            matches = true
-            break
+    if (matches) {
+      // Determine which field was used for matching
+      let matchedField = "unknown"
+      if (fieldType === "generic_name" || fieldType === "any") {
+        if (result.openfda?.generic_name && Array.isArray(result.openfda.generic_name)) {
+          for (const name of result.openfda.generic_name) {
+            const nameLower = String(name).toLowerCase()
+            if (nameLower === normalizedLower) {
+              matchedField = "generic_name"
+              break
+            }
           }
         }
+        if (matchedField === "unknown" && result.openfda?.substance_name && Array.isArray(result.openfda.substance_name)) {
+          for (const name of result.openfda.substance_name) {
+            const nameLower = String(name).toLowerCase()
+            if (nameLower === normalizedLower || nameLower.includes(normalizedLower)) {
+              matchedField = "substance_name"
+              break
+            }
+          }
+        }
+      } else if (fieldType === "brand_name") {
+        matchedField = "brand_name"
       }
-    }
-    
-    if (matches) {
+      
+      // Check if label's primary ingredient matches (reject if different primary ingredient)
+      if (!isPrimaryIngredientMatch(result, normalizedValue)) {
+        continue
+      }
+      
       // Check if label contains other NSAIDs - reject if so
       if (labelContainsOtherNSAIDs(result, normalizedValue)) {
         continue
       }
       
-      return extractWarningsAndMetadata(result, normalizedValue, true)
+      const extracted = extractWarningsAndMetadata(result, normalizedValue, true)
+      
+      // Log which record was selected and warnings count
+      if (extracted) {
+        const warningsCount = extracted.warnings ? extracted.warnings.length : 0
+        console.log(`[openFDA Label] selected record: ${matchedField}, warnings count: ${warningsCount}`)
+      }
+      
+      return extracted
     }
   }
   
@@ -328,19 +530,6 @@ function extractWarningsAndMetadata(result: any, normalizedValue: string, requir
     warnings = result.warnings
   } else if (result.warnings) {
     warnings = [String(result.warnings)]
-  }
-  
-  // Filter warnings: reject any that mention other NSAIDs
-  if (warnings) {
-    warnings = warnings.filter(warning => {
-      const warningText = String(warning)
-      return !containsOtherNSAIDs(warningText, normalizedValue)
-    })
-    
-    // If all warnings were filtered out, set to undefined
-    if (warnings.length === 0) {
-      warnings = undefined
-    }
   }
   
   // Extract product name

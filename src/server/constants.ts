@@ -5,7 +5,7 @@ import "server-only"
  */
 
 // Calculation version - increment when logic changes to invalidate cache
-export const CALC_VERSION = "v1.0.0"
+export const CALC_VERSION = "v1.0.1"
 
 // Concurrency limits
 export const MAX_CONCURRENT_UPSTREAM_CALLS = 6

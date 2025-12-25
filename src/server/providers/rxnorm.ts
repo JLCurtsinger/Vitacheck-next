@@ -106,6 +106,7 @@ export async function lookupRxCUI(
 
 /**
  * Get interactions between two RxCUIs.
+ * Calls the single-RxCUI endpoint and checks if the second RxCUI appears in the interactions.
  */
 export async function getInteractions(
   rxcui1: string,
@@ -114,7 +115,8 @@ export async function getInteractions(
   const startTime = Date.now()
   
   try {
-    const url = `${RXNORM_BASE_URL}/interaction/interaction.json?rxcui=${rxcui1}&rxcui=${rxcui2}`
+    // Call single-RxCUI endpoint to get all interactions for rxcui1
+    const url = `${RXNORM_BASE_URL}/interaction/interaction.json?rxcui=${rxcui1}`
     
     const response = await fetchWithTimeout(url, {
       timeout: TIMEOUT_RXNORM_INTERACTIONS,
@@ -124,6 +126,7 @@ export async function getInteractions(
     })
     
     if (!response.ok) {
+      // HTTP error - return error message
       return {
         data: null,
         error: `HTTP ${response.status}`,
@@ -135,17 +138,34 @@ export async function getInteractions(
     const data = await response.json()
     
     // RxNorm interaction API returns:
-    // { interactionTypeGroup: [{ interactionType: [{ interactionPair: [...] }] }] }
+    // { interactionTypeGroup: [{ interactionType: [{ interactionPair: [{ minConceptItem: [{ rxcui: "..." }], description: "...", severity: "..." }] }] }] }
     let severity: InteractionSeverity | undefined
     let description: string | undefined
     
+    // Search through all interaction pairs to find if rxcui2 appears
     if (data.interactionTypeGroup && Array.isArray(data.interactionTypeGroup)) {
       for (const group of data.interactionTypeGroup) {
         if (group.interactionType && Array.isArray(group.interactionType)) {
           for (const type of group.interactionType) {
             if (type.interactionPair && Array.isArray(type.interactionPair)) {
               for (const pair of type.interactionPair) {
-                if (pair.description) {
+                // Check if rxcui2 appears in this interaction pair (but not rxcui1)
+                let foundRxcui2 = false
+                
+                // Check minConceptItem array for matching RxCUI
+                if (pair.minConceptItem && Array.isArray(pair.minConceptItem)) {
+                  for (const item of pair.minConceptItem) {
+                    const itemRxcui = item.rxcui ? String(item.rxcui) : null
+                    // Found rxcui2 and it's different from rxcui1
+                    if (itemRxcui === String(rxcui2) && itemRxcui !== String(rxcui1)) {
+                      foundRxcui2 = true
+                      break
+                    }
+                  }
+                }
+                
+                // If rxcui2 found in this pair, extract severity and description
+                if (foundRxcui2 && pair.description) {
                   description = pair.description
                   
                   // Map RxNorm severity to our severity
@@ -162,8 +182,12 @@ export async function getInteractions(
                     }
                   }
                   
-                  // Take first interaction found
-                  break
+                  // Found the interaction, return it
+                  return {
+                    data: { severity, description, source: "RxNorm" },
+                    cached: false,
+                    timingMs: Date.now() - startTime,
+                  }
                 }
               }
             }
@@ -172,12 +196,14 @@ export async function getInteractions(
       }
     }
     
+    // rxcui2 not found in any interactions - return ok with null data
     return {
-      data: severity || description ? { severity, description, source: "RxNorm" } : null,
+      data: null,
       cached: false,
       timingMs: Date.now() - startTime,
     }
   } catch (error) {
+    // On error, return error message
     return {
       data: null,
       error: error instanceof Error ? error.message : String(error),

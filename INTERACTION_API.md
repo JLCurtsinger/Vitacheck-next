@@ -156,6 +156,33 @@ curl -X POST http://localhost:3000/api/interactions/check \
       "debug": true
     }
   }'
+
+# Debug + forceRefresh for warfarin+ibuprofen (bypasses cache)
+curl -X POST http://localhost:3000/api/interactions/check \
+  -H "Content-Type: application/json" \
+  -d '{
+    "items": [
+      {"value": "warfarin"},
+      {"value": "ibuprofen"}
+    ],
+    "options": {
+      "debug": true,
+      "forceRefresh": true
+    }
+  }'
+
+# Debug + forceRefresh for ibuprofen single (bypasses cache)
+curl -X POST http://localhost:3000/api/interactions/check \
+  -H "Content-Type: application/json" \
+  -d '{
+    "items": [
+      {"value": "ibuprofen"}
+    ],
+    "options": {
+      "debug": true,
+      "forceRefresh": true
+    }
+  }'
 ```
 
 ### Using the test script

@@ -22,28 +22,58 @@ function hashSources(sources: any[]): string {
 
 /**
  * Get medication lookup cache entry.
+ * Returns null if:
+ * - Entry doesn't exist
+ * - Negative result (rxnorm_rxcui is null) and updated_at is older than 24 hours
  */
 export async function getMedLookupCache(
-  normalizedValue: string
+  normalizedValue: string,
+  forceRefresh: boolean = false
 ): Promise<{
   rxnorm_rxcui: string | null
   suppai_id: string | null
   fda_label_warnings: any | null
   fda_label_rxcui: string | null
+  updated_at: Date
 } | null> {
+  if (forceRefresh) {
+    return null
+  }
+  
   const result = await query<{
     rxnorm_rxcui: string | null
     suppai_id: string | null
     fda_label_warnings: any | null
     fda_label_rxcui: string | null
+    updated_at: Date
   }>(
-    `SELECT rxnorm_rxcui, suppai_id, fda_label_warnings, fda_label_rxcui
+    `SELECT rxnorm_rxcui, suppai_id, fda_label_warnings, fda_label_rxcui, updated_at
      FROM med_lookup_cache
      WHERE normalized_value = $1`,
     [normalizedValue]
   )
   
-  return result.rows[0] || null
+  if (!result.rows[0]) {
+    return null
+  }
+  
+  const cached = result.rows[0]
+  const updatedAt = new Date(cached.updated_at)
+  const now = new Date()
+  const hoursSinceUpdate = (now.getTime() - updatedAt.getTime()) / (1000 * 60 * 60)
+  
+  // If negative result (rxnorm_rxcui is null) and older than 24 hours, invalidate
+  if (cached.rxnorm_rxcui === null && hoursSinceUpdate > 24) {
+    return null
+  }
+  
+  // If negative suppai result (suppai_id is null) and older than 24 hours, invalidate
+  if (cached.suppai_id === null && hoursSinceUpdate > 24) {
+    // Still return the entry but mark suppai_id as needing refresh
+    // We'll handle this in orchestrator by checking if it's stale
+  }
+  
+  return cached
 }
 
 /**
@@ -82,8 +112,13 @@ export async function setMedLookupCache(
  * Get pair interaction cache entry.
  */
 export async function getPairInteractionCache(
-  pairKey: string
+  pairKey: string,
+  forceRefresh: boolean = false
 ): Promise<InteractionResult | null> {
+  if (forceRefresh) {
+    return null
+  }
+  
   const result = await query<{
     result_json: InteractionResult
     calc_version: string
@@ -132,12 +167,17 @@ export async function setPairInteractionCache(
  * Get CMS usage cache entry.
  */
 export async function getCmsUsageCache(
-  normalizedValue: string
+  normalizedValue: string,
+  forceRefresh: boolean = false
 ): Promise<{
   beneficiaries: number | null
   year: number | null
   source_meta: any | null
 } | null> {
+  if (forceRefresh) {
+    return null
+  }
+  
   const result = await query<{
     beneficiaries: number | null
     year: number | null
