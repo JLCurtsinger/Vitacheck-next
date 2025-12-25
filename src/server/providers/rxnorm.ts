@@ -2,6 +2,7 @@ import "server-only"
 import { fetchWithTimeout } from "../utils/timeout"
 import { TIMEOUT_RXNORM_LOOKUP, TIMEOUT_RXNORM_INTERACTIONS } from "../constants"
 import type { ProviderResponse, RxNormLookupResult, RxNormInteractionResult, InteractionSeverity } from "../types"
+import { fetchRxNormInteractionsCore } from "./rxnormCore"
 
 const RXNORM_BASE_URL = "https://rxnav.nlm.nih.gov/REST"
 
@@ -107,6 +108,9 @@ export async function lookupRxCUI(
 /**
  * Get interactions between two RxCUIs.
  * Calls the single-RxCUI endpoint and checks if the second RxCUI appears in the interactions.
+ * 
+ * Note: The RxNorm interactions API was discontinued in January 2024, so 404 responses
+ * are expected and should be treated as "no interactions found" rather than errors.
  */
 export async function getInteractions(
   rxcui1: string,
@@ -115,90 +119,41 @@ export async function getInteractions(
   const startTime = Date.now()
   
   try {
-    // Call single-RxCUI endpoint to get all interactions for rxcui1
-    const url = `${RXNORM_BASE_URL}/interaction/interaction.json?rxcui=${rxcui1}`
+    // Log URL and parameters if DEBUG_RXNORM is enabled
+    if (process.env.DEBUG_RXNORM === "true") {
+      const url = `${RXNORM_BASE_URL}/interaction/interaction.json?rxcui=${rxcui1}`
+      console.log("[rxnorm-interactions] url =", url, "rxcuis =", rxcui1, rxcui2)
+    }
     
-    const response = await fetchWithTimeout(url, {
-      timeout: TIMEOUT_RXNORM_INTERACTIONS,
-      headers: {
-        Accept: "application/json",
-      },
-    })
+    // Use core fetch logic (can be tested independently)
+    const result = await fetchRxNormInteractionsCore(rxcui1, rxcui2, TIMEOUT_RXNORM_INTERACTIONS)
     
-    if (!response.ok) {
-      // HTTP error - return error message
+    if (process.env.DEBUG_RXNORM === "true" && result.status === 404) {
+      console.log("[rxnorm-interactions] 404 response - treating as no interactions found")
+    }
+    
+    // Handle 404 as "no interactions found" (normalized success case)
+    if (result.status === 404) {
       return {
         data: null,
-        error: `HTTP ${response.status}`,
         cached: false,
         timingMs: Date.now() - startTime,
       }
     }
     
-    const data = await response.json()
-    
-    // RxNorm interaction API returns:
-    // { interactionTypeGroup: [{ interactionType: [{ interactionPair: [{ minConceptItem: [{ rxcui: "..." }], description: "...", severity: "..." }] }] }] }
-    let severity: InteractionSeverity | undefined
-    let description: string | undefined
-    
-    // Search through all interaction pairs to find if rxcui2 appears
-    if (data.interactionTypeGroup && Array.isArray(data.interactionTypeGroup)) {
-      for (const group of data.interactionTypeGroup) {
-        if (group.interactionType && Array.isArray(group.interactionType)) {
-          for (const type of group.interactionType) {
-            if (type.interactionPair && Array.isArray(type.interactionPair)) {
-              for (const pair of type.interactionPair) {
-                // Check if rxcui2 appears in this interaction pair (but not rxcui1)
-                let foundRxcui2 = false
-                
-                // Check minConceptItem array for matching RxCUI
-                if (pair.minConceptItem && Array.isArray(pair.minConceptItem)) {
-                  for (const item of pair.minConceptItem) {
-                    const itemRxcui = item.rxcui ? String(item.rxcui) : null
-                    // Found rxcui2 and it's different from rxcui1
-                    if (itemRxcui === String(rxcui2) && itemRxcui !== String(rxcui1)) {
-                      foundRxcui2 = true
-                      break
-                    }
-                  }
-                }
-                
-                // If rxcui2 found in this pair, extract severity and description
-                if (foundRxcui2 && pair.description) {
-                  description = pair.description
-                  
-                  // Map RxNorm severity to our severity
-                  if (pair.severity) {
-                    const sev = pair.severity.toLowerCase()
-                    if (sev.includes("major") || sev.includes("severe")) {
-                      severity = "severe"
-                    } else if (sev.includes("moderate")) {
-                      severity = "moderate"
-                    } else if (sev.includes("minor") || sev.includes("mild")) {
-                      severity = "mild"
-                    } else {
-                      severity = "unknown"
-                    }
-                  }
-                  
-                  // Found the interaction, return it
-                  return {
-                    data: { severity, description, source: "RxNorm" },
-                    cached: false,
-                    timingMs: Date.now() - startTime,
-                  }
-                }
-              }
-            }
-          }
-        }
+    // Handle other errors
+    if (result.error) {
+      return {
+        data: null,
+        error: result.error,
+        cached: false,
+        timingMs: Date.now() - startTime,
       }
     }
     
-    // rxcui2 not found in any interactions - return ok with null data
+    // Return successful result (data may be null if no interaction found)
     return {
-      data: null,
+      data: result.data,
       cached: false,
       timingMs: Date.now() - startTime,
     }

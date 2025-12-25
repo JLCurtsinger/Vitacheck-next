@@ -101,9 +101,16 @@ export async function checkInteractions(
   // Helper to track provider status
   const trackProviderStatus = (name: string, result: any, attempted: boolean = true) => {
     if (debug) {
+      // For interactions providers, "no interactions found" (data: null, no error) is ok: true
+      // For lookup providers, data: null typically means not found (ok: false)
+      const isInteractionsProvider = name.includes("interactions")
+      const ok = attempted && result && !result.error && (
+        result.data !== null || (isInteractionsProvider && result.data === null && !result.error)
+      )
+      
       providerStatuses[name] = {
         attempted,
-        ok: attempted && result && !result.error && result.data !== null,
+        ok,
         ms: result?.timingMs || 0,
         cached: result?.cached || false,
         error: result?.error,
