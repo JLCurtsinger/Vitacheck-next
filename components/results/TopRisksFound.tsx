@@ -1,6 +1,5 @@
 "use client"
 
-import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { type TopRiskItem, type InteractionSeverity } from "@/lib/riskSummary"
 
@@ -9,24 +8,14 @@ interface TopRisksFoundProps {
   onSelect: (targetId: string) => void
 }
 
-const getSeverityBadgeVariant = (severity: InteractionSeverity) => {
+const getSeverityTextClassName = (severity: InteractionSeverity) => {
   if (severity === "severe") {
-    return "destructive"
+    return "text-red-600"
   }
   if (severity === "moderate") {
-    return "secondary"
+    return "text-yellow-600"
   }
-  return "default"
-}
-
-const getSeverityBadgeClassName = (severity: InteractionSeverity) => {
-  if (severity === "moderate") {
-    return "bg-yellow-100 text-yellow-800 border-yellow-300 hover:bg-yellow-100"
-  }
-  if (severity === "minor") {
-    return "bg-green-100 text-green-800 border-green-300 hover:bg-green-100"
-  }
-  return "" // Use default destructive variant for severe
+  return "text-green-600" // minor
 }
 
 const getSeverityLabel = (severity: InteractionSeverity) => {
@@ -54,17 +43,15 @@ export function TopRisksFound({ risks, onSelect }: TopRisksFoundProps) {
             onClick={() => onSelect(risk.targetId)}
           >
             <CardContent className="pt-4 pb-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div className="flex-1">
-                  <p className="text-sm font-medium mb-1">{risk.headline}</p>
-                  <p className="text-xs text-muted-foreground">{risk.pairLabel}</p>
-                </div>
-                <Badge
-                  variant={getSeverityBadgeVariant(risk.severity)}
-                  className={`text-xs py-0.5 px-2 shrink-0 ${getSeverityBadgeClassName(risk.severity)}`}
-                >
-                  {getSeverityLabel(risk.severity)}
-                </Badge>
+              <div>
+                <p className="text-sm font-medium mb-1">{risk.headline}</p>
+                <p className="text-xs text-muted-foreground">{risk.pairLabel}</p>
+                <p className="text-sm mt-2">
+                  <span className="text-muted-foreground">Severity: </span>
+                  <span className={`font-medium ${getSeverityTextClassName(risk.severity)}`}>
+                    {getSeverityLabel(risk.severity)}
+                  </span>
+                </p>
               </div>
             </CardContent>
           </Card>

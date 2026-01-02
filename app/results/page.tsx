@@ -134,37 +134,13 @@ function ResultsContent() {
 
   return (
     <main className="min-h-screen bg-white">
-      <div className="container mx-auto px-4 py-8 sm:py-12 max-w-4xl">
+      <div className="container mx-auto px-4 pt-4 pb-8 sm:pt-6 sm:pb-12 max-w-4xl">
         <div className="space-y-8">
           {/* Top Summary Block */}
           <div className="space-y-6">
             <div>
-              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-2">
-                Interaction results
-              </h1>
-              
-              {/* Items checked */}
-              {checkedItems.length > 0 && (
-                <div className="mt-4 space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Items checked
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {checkedItems.map((item) => (
-                      <Badge
-                        key={item.id}
-                        variant="outline"
-                        className="text-sm py-1 px-3"
-                      >
-                        {item.label}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Severity Banner */}
-              <div className="mt-6">
+              <div>
                 {(() => {
                   const config = getSeverityBannerConfig(mockResults.overallRisk)
                   const Icon = config.icon
@@ -195,15 +171,24 @@ function ResultsContent() {
                             <p className="text-sm text-muted-foreground">
                               {config.message}
                             </p>
+                            {/* Items checked */}
+                            {checkedItems.length > 0 && (
+                              <div className="mt-3 flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-medium text-muted-foreground">
+                                  Items checked:
+                                </span>
+                                {checkedItems.map((item) => (
+                                  <Badge
+                                    key={item.id}
+                                    variant="outline"
+                                    className="text-sm py-1 px-3"
+                                  >
+                                    {item.label}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                          <Button
-                            onClick={() => router.push("/")}
-                            variant="outline"
-                            size="default"
-                            className="shrink-0"
-                          >
-                            Check different items
-                          </Button>
                         </div>
                       </CardContent>
                     </Card>

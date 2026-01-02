@@ -1,8 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { Menu } from "lucide-react"
+import { useRouter, usePathname } from "next/navigation"
+import { Menu, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -17,6 +17,8 @@ const isAuthed = false
 
 export function Navbar() {
   const router = useRouter()
+  const pathname = usePathname()
+  const isResultsPage = pathname === "/results"
 
   const handleSignOut = () => {
     console.log("sign out")
@@ -36,6 +38,19 @@ export function Navbar() {
 
         {/* Spacer */}
         <div className="flex-1" />
+
+        {/* New check button - only on results page */}
+        {isResultsPage && (
+          <Button
+            onClick={() => router.push("/")}
+            variant="default"
+            size="sm"
+            className="mr-2 gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            New check
+          </Button>
+        )}
 
         {/* Menu Dropdown */}
         <DropdownMenu>
