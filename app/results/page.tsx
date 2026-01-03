@@ -12,12 +12,19 @@ import { mockSuggestions } from "@/lib/mockSuggestions"
 import { mockResults, type Severity, type InteractionSeverity } from "@/lib/mockResults"
 import { buildTopRisks } from "@/lib/riskSummary"
 import { TopRisksFound } from "@/components/results/TopRisksFound"
+import { SourceDetailsModal } from "@/components/results/SourceDetailsModal"
+import type { InteractionSource } from "@/src/lib/apiTypes"
 
 function ResultsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const itemIds = searchParams.get("items")?.split(",") || []
   const [activeTab, setActiveTab] = useState("all")
+  const [selectedSource, setSelectedSource] = useState<{
+    name: string
+    data?: InteractionSource | null
+    pairLabel?: string
+  } | null>(null)
 
   // Get item labels from IDs
   const checkedItems = itemIds
@@ -331,6 +338,37 @@ function ResultsContent() {
                       <p className="text-sm text-muted-foreground mb-4">
                         {pair.whatThisMeans}
                       </p>
+                      
+                      {/* Data Sources */}
+                      {pair.evidenceSources && pair.evidenceSources.length > 0 && (
+                        <div className="mb-4">
+                          <p className="text-xs font-medium text-muted-foreground mb-2">
+                            Data Sources:
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {pair.evidenceSources.map((source, idx) => (
+                              <Button
+                                key={idx}
+                                variant="outline"
+                                size="sm"
+                                className="text-xs h-7 px-2"
+                                onClick={() => {
+                                  // For mock data, we don't have full InteractionSource objects
+                                  // So we pass null as sourceData - modal will show "Details not available yet"
+                                  setSelectedSource({
+                                    name: source,
+                                    data: null,
+                                    pairLabel: `${pair.itemA} + ${pair.itemB}`,
+                                  })
+                                }}
+                              >
+                                {source}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       <Accordion type="single" collapsible className="w-full">
                         <AccordionItem value={`details-${pair.id}`}>
                           <AccordionTrigger className="text-sm">
@@ -394,22 +432,34 @@ function ResultsContent() {
                       <p className="text-sm text-muted-foreground">
                         {individual.safetySummary}
                       </p>
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-2">
-                          Evidence sources
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {individual.evidenceSources.map((source, idx) => (
-                            <Badge
-                              key={idx}
-                              variant="outline"
-                              className="text-xs"
-                            >
-                              {source}
-                            </Badge>
-                          ))}
+                      
+                      {/* Data Sources */}
+                      {individual.evidenceSources && individual.evidenceSources.length > 0 && (
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground mb-2">
+                            Data Sources:
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {individual.evidenceSources.map((source, idx) => (
+                              <Button
+                                key={idx}
+                                variant="outline"
+                                size="sm"
+                                className="text-xs h-7 px-2"
+                                onClick={() => {
+                                  setSelectedSource({
+                                    name: source,
+                                    data: null,
+                                    pairLabel: individual.itemName,
+                                  })
+                                }}
+                              >
+                                {source}
+                              </Button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </CardContent>
                   </Card>
                 ))}
@@ -438,6 +488,35 @@ function ResultsContent() {
                     <p className="text-sm text-muted-foreground mb-4">
                       {pair.whatThisMeans}
                     </p>
+                    
+                    {/* Data Sources */}
+                    {pair.evidenceSources && pair.evidenceSources.length > 0 && (
+                      <div className="mb-4">
+                        <p className="text-xs font-medium text-muted-foreground mb-2">
+                          Data Sources:
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {pair.evidenceSources.map((source, idx) => (
+                            <Button
+                              key={idx}
+                              variant="outline"
+                              size="sm"
+                              className="text-xs h-7 px-2"
+                              onClick={() => {
+                                setSelectedSource({
+                                  name: source,
+                                  data: null,
+                                  pairLabel: `${pair.itemA} + ${pair.itemB}`,
+                                })
+                              }}
+                            >
+                              {source}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <Accordion type="single" collapsible className="w-full">
                       <AccordionItem value={`details-${pair.id}`}>
                         <AccordionTrigger className="text-sm">
@@ -500,22 +579,33 @@ function ResultsContent() {
                         {individual.safetySummary}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-2">
-                        Evidence sources
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {individual.evidenceSources.map((source, idx) => (
-                          <Badge
-                            key={idx}
-                            variant="outline"
-                            className="text-xs"
-                          >
-                            {source}
-                          </Badge>
-                        ))}
+                    {/* Data Sources */}
+                    {individual.evidenceSources && individual.evidenceSources.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-2">
+                          Data Sources:
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {individual.evidenceSources.map((source, idx) => (
+                            <Button
+                              key={idx}
+                              variant="outline"
+                              size="sm"
+                              className="text-xs h-7 px-2"
+                              onClick={() => {
+                                setSelectedSource({
+                                  name: source,
+                                  data: null,
+                                  pairLabel: individual.itemName,
+                                })
+                              }}
+                            >
+                              {source}
+                            </Button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}
@@ -523,6 +613,21 @@ function ResultsContent() {
           </Tabs>
         </div>
       </div>
+
+      {/* Source Details Modal */}
+      {selectedSource && (
+        <SourceDetailsModal
+          open={!!selectedSource}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSelectedSource(null)
+            }
+          }}
+          sourceName={selectedSource.name}
+          sourceData={selectedSource.data}
+          pairLabel={selectedSource.pairLabel}
+        />
+      )}
     </main>
   )
 }

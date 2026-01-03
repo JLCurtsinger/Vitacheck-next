@@ -45,9 +45,9 @@ export function Navbar() {
             onClick={() => router.push("/")}
             variant="default"
             size="sm"
-            className="mr-2 gap-2"
+            className="mr-2 gap-2 h-8 px-2.5 py-1.5 rounded-lg font-medium text-white"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
             New check
           </Button>
         )}

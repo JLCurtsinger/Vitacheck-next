@@ -157,12 +157,18 @@ npx tsx src/server/dev/testInteraction.ts
 - "Severe" requires high-reliability source OR sufficient combined weight
 - Low/medium sources alone cannot result in "severe" if high sources disagree
 
-### 8. Confidence Calculation
-- Base confidence per source type
-- Adjusted by evidence quality/quantity
-- CMS beneficiary counts boost confidence (logarithmic, capped at 15%)
-- Event rates boost confidence (5% boost)
-- Event counts adjust confidence (more events = more reliable)
+### 8. Confidence Calculation (First-Class Output)
+- **Definition:** Confidence reflects evidence robustness, completeness, and consistency (separate from severity)
+- **Base confidence per source type:**
+  - RxNorm: 0.85, FDA Label: 0.80, SUPP.AI: 0.70, openFDA: 0.65, AI Literature: 0.60
+- **Adjustments based on evidence quality/quantity:**
+  - CMS beneficiary counts boost confidence (logarithmic, capped at 15%)
+  - Event rates boost confidence (5% boost when available)
+  - Event counts adjust confidence (more events = more reliable, very few = penalty)
+  - "Unknown" severity penalizes confidence (×0.7 multiplier)
+- **Overall confidence:** Weighted average of per-source confidences (sources with higher base confidence get more weight)
+- **Guardrails:** Never show 100% confidence (cap at 0.95), conflicting evidence reduces confidence, missing primary sources reduce confidence
+- **See `api-orchestration.md` section 5.1 for complete confidence requirements**
 
 ### 9. CMS Part D Integration
 - Stub implementation ready for integration
