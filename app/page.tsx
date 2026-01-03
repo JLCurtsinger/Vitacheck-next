@@ -25,9 +25,9 @@ export default function HomePage() {
       return "Add 2 or more items to check."
     }
     if (selectedItems.length === 1) {
-      return "Add one more item."
+      return "Add 1 more item to check."
     }
-    return ""
+    return null
   }
 
   return (
@@ -50,7 +50,7 @@ export default function HomePage() {
             items={selectedItems}
             onItemsChange={setSelectedItems}
             suggestions={mockSuggestions}
-            // label="Enter medications or supplements"
+            label=""
             placeholder="Type a medication or supplement here..."
           />
 
