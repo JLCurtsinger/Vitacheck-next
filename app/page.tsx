@@ -22,7 +22,7 @@ export default function HomePage() {
 
   const getHelperText = () => {
     if (selectedItems.length === 0) {
-      return "Add at least 2 items to check interactions."
+      return "Add 2 or more items to check."
     }
     if (selectedItems.length === 1) {
       return "Add one more item."
@@ -39,8 +39,8 @@ export default function HomePage() {
             See if medications and supplements mix safely.
           </h1>
           <p className="text-base sm:text-lg text-muted-foreground">
-            Type a medication or supplement, pick from suggestions, add more,
-            then check interactions.
+            Enter medications or supplements,
+            then check for interactions.
           </p>
         </div>
 
@@ -50,7 +50,7 @@ export default function HomePage() {
             items={selectedItems}
             onItemsChange={setSelectedItems}
             suggestions={mockSuggestions}
-            label="Enter medications or supplements"
+            // label="Enter medications or supplements"
             placeholder="Type a medication or supplement here..."
           />
 
@@ -71,7 +71,7 @@ export default function HomePage() {
             )}
             {/* Disclaimer */}
             <p className="text-xs text-muted-foreground">
-              Informational only. Not medical advice.
+              Informational only, not medical advice.
             </p>
           </div>
         </div>
