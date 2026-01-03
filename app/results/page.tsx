@@ -212,8 +212,101 @@ function ResultsContent() {
             </div>
           )}
 
+          {/* Interaction Severity Breakdown */}
+          <div className="mt-6">
+            <div className="rounded-lg border bg-card p-4 sm:p-6">
+              <h2 className="text-xl font-semibold mb-4">Interaction severity breakdown</h2>
+              
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="border-b-2 bg-muted/50">
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
+                        Source
+                      </th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
+                        Total
+                      </th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
+                        Severe
+                      </th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
+                        Moderate
+                      </th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
+                        Minor
+                      </th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
+                        % Severe
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mockResults.severityBreakdown.map((row, idx) => (
+                      <tr 
+                        key={idx} 
+                        className={`border-b ${idx % 2 === 1 ? 'bg-muted/30' : ''}`}
+                      >
+                        <td className="py-3 px-4 text-sm font-medium">{row.source}</td>
+                        <td className="py-3 px-4 text-sm text-right">{row.total}</td>
+                        <td className="py-3 px-4 text-sm text-right text-red-600">{row.severe}</td>
+                        <td className="py-3 px-4 text-sm text-right text-yellow-600">{row.moderate}</td>
+                        <td className="py-3 px-4 text-sm text-right text-green-600">{row.minor}</td>
+                        <td className="py-3 px-4 text-sm text-right">{row.percentSevere.toFixed(1)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Accordion */}
+              <div className="md:hidden">
+                <Accordion type="single" collapsible className="w-full">
+                  {mockResults.severityBreakdown.map((row, idx) => (
+                    <AccordionItem 
+                      key={idx} 
+                      value={`breakdown-${idx}`} 
+                      className={`border-b ${idx % 2 === 1 ? 'bg-muted/30' : ''}`}
+                    >
+                      <AccordionTrigger className="py-3 hover:no-underline">
+                        <div className="flex flex-1 items-center justify-between pr-2">
+                          <span className="text-sm font-medium">{row.source}</span>
+                          <span className="text-sm text-muted-foreground">
+                            {row.percentSevere.toFixed(1)}% Severe
+                          </span>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <div className="space-y-3 pt-2 pb-2">
+                          {[
+                            { label: "Total", value: row.total, color: "", isMuted: false },
+                            { label: "Severe", value: row.severe, color: "text-red-600", isMuted: false },
+                            { label: "Moderate", value: row.moderate, color: "text-yellow-600", isMuted: false },
+                            { label: "Minor", value: row.minor, color: "text-green-600", isMuted: false },
+                            { label: "% Severe", value: `${row.percentSevere.toFixed(1)}%`, color: "", isMuted: true, hasBorder: true },
+                          ].map((item, detailIdx) => (
+                            <div 
+                              key={item.label}
+                              className={`flex justify-between items-center ${detailIdx % 2 === 1 ? 'bg-muted/30' : ''} ${item.hasBorder ? 'pt-2 border-t' : ''} py-1 px-2 -mx-2 rounded`}
+                            >
+                              <span className={`text-sm ${item.isMuted ? 'font-medium' : 'text-muted-foreground'}`}>
+                                {item.label}
+                              </span>
+                              <span className={`text-sm font-medium ${item.color}`}>{item.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
+              </div>
+            </div>
+          </div>
+
           {/* Tabs */}
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full mt-6">
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="all">All results</TabsTrigger>
               <TabsTrigger value="pairs">Pairs</TabsTrigger>
@@ -222,97 +315,6 @@ function ResultsContent() {
 
             {/* All Results Tab */}
             <TabsContent value="all" className="space-y-6 mt-6">
-              {/* Interaction Severity Breakdown */}
-              <div className="rounded-lg border bg-card p-4 sm:p-6">
-                <h2 className="text-xl font-semibold mb-4">Interaction severity breakdown</h2>
-                
-                {/* Desktop Table */}
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr className="border-b-2 bg-muted/50">
-                        <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
-                          Source
-                        </th>
-                        <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
-                          Total
-                        </th>
-                        <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
-                          Severe
-                        </th>
-                        <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
-                          Moderate
-                        </th>
-                        <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
-                          Minor
-                        </th>
-                        <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">
-                          % Severe
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {mockResults.severityBreakdown.map((row, idx) => (
-                        <tr 
-                          key={idx} 
-                          className={`border-b ${idx % 2 === 1 ? 'bg-muted/30' : ''}`}
-                        >
-                          <td className="py-3 px-4 text-sm font-medium">{row.source}</td>
-                          <td className="py-3 px-4 text-sm text-right">{row.total}</td>
-                          <td className="py-3 px-4 text-sm text-right text-red-600">{row.severe}</td>
-                          <td className="py-3 px-4 text-sm text-right text-yellow-600">{row.moderate}</td>
-                          <td className="py-3 px-4 text-sm text-right text-green-600">{row.minor}</td>
-                          <td className="py-3 px-4 text-sm text-right">{row.percentSevere.toFixed(1)}%</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile Accordion */}
-                <div className="md:hidden">
-                  <Accordion type="single" collapsible className="w-full">
-                    {mockResults.severityBreakdown.map((row, idx) => (
-                      <AccordionItem 
-                        key={idx} 
-                        value={`breakdown-${idx}`} 
-                        className={`border-b ${idx % 2 === 1 ? 'bg-muted/30' : ''}`}
-                      >
-                        <AccordionTrigger className="py-3 hover:no-underline">
-                          <div className="flex flex-1 items-center justify-between pr-2">
-                            <span className="text-sm font-medium">{row.source}</span>
-                            <span className="text-sm text-muted-foreground">
-                              {row.percentSevere.toFixed(1)}% Severe
-                            </span>
-                          </div>
-                        </AccordionTrigger>
-                        <AccordionContent>
-                          <div className="space-y-3 pt-2 pb-2">
-                            {[
-                              { label: "Total", value: row.total, color: "", isMuted: false },
-                              { label: "Severe", value: row.severe, color: "text-red-600", isMuted: false },
-                              { label: "Moderate", value: row.moderate, color: "text-yellow-600", isMuted: false },
-                              { label: "Minor", value: row.minor, color: "text-green-600", isMuted: false },
-                              { label: "% Severe", value: `${row.percentSevere.toFixed(1)}%`, color: "", isMuted: true, hasBorder: true },
-                            ].map((item, detailIdx) => (
-                              <div 
-                                key={item.label}
-                                className={`flex justify-between items-center ${detailIdx % 2 === 1 ? 'bg-muted/30' : ''} ${item.hasBorder ? 'pt-2 border-t' : ''} py-1 px-2 -mx-2 rounded`}
-                              >
-                                <span className={`text-sm ${item.isMuted ? 'font-medium' : 'text-muted-foreground'}`}>
-                                  {item.label}
-                                </span>
-                                <span className={`text-sm font-medium ${item.color}`}>{item.value}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </AccordionContent>
-                      </AccordionItem>
-                    ))}
-                  </Accordion>
-                </div>
-              </div>
-
               {/* Pair Results */}
               <div className="space-y-4">
                 <h2 className="text-xl font-semibold">Pair Interactions</h2>
