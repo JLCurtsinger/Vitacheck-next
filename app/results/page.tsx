@@ -223,8 +223,8 @@ function ResultsContent() {
             {/* All Results Tab */}
             <TabsContent value="all" className="space-y-6 mt-6">
               {/* Interaction Severity Breakdown */}
-              <div className="space-y-4">
-                <h2 className="text-xl font-semibold">Interaction severity breakdown</h2>
+              <div className="rounded-lg border bg-card p-4 sm:p-6">
+                <h2 className="text-xl font-semibold mb-4">Interaction severity breakdown</h2>
                 
                 {/* Desktop Table */}
                 <div className="hidden md:block overflow-x-auto">
@@ -273,7 +273,11 @@ function ResultsContent() {
                 <div className="md:hidden">
                   <Accordion type="single" collapsible className="w-full">
                     {mockResults.severityBreakdown.map((row, idx) => (
-                      <AccordionItem key={idx} value={`breakdown-${idx}`} className="border-b">
+                      <AccordionItem 
+                        key={idx} 
+                        value={`breakdown-${idx}`} 
+                        className={`border-b ${idx % 2 === 1 ? 'bg-muted/30' : ''}`}
+                      >
                         <AccordionTrigger className="py-3 hover:no-underline">
                           <div className="flex flex-1 items-center justify-between pr-2">
                             <span className="text-sm font-medium">{row.source}</span>
@@ -284,26 +288,23 @@ function ResultsContent() {
                         </AccordionTrigger>
                         <AccordionContent>
                           <div className="space-y-3 pt-2 pb-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm text-muted-foreground">Total</span>
-                              <span className="text-sm font-medium">{row.total}</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm text-muted-foreground">Severe</span>
-                              <span className="text-sm font-medium text-red-600">{row.severe}</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm text-muted-foreground">Moderate</span>
-                              <span className="text-sm font-medium text-yellow-600">{row.moderate}</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm text-muted-foreground">Minor</span>
-                              <span className="text-sm font-medium text-green-600">{row.minor}</span>
-                            </div>
-                            <div className="flex justify-between items-center pt-2 border-t">
-                              <span className="text-sm font-medium">% Severe</span>
-                              <span className="text-sm font-medium">{row.percentSevere.toFixed(1)}%</span>
-                            </div>
+                            {[
+                              { label: "Total", value: row.total, color: "", isMuted: false },
+                              { label: "Severe", value: row.severe, color: "text-red-600", isMuted: false },
+                              { label: "Moderate", value: row.moderate, color: "text-yellow-600", isMuted: false },
+                              { label: "Minor", value: row.minor, color: "text-green-600", isMuted: false },
+                              { label: "% Severe", value: `${row.percentSevere.toFixed(1)}%`, color: "", isMuted: true, hasBorder: true },
+                            ].map((item, detailIdx) => (
+                              <div 
+                                key={item.label}
+                                className={`flex justify-between items-center ${detailIdx % 2 === 1 ? 'bg-muted/30' : ''} ${item.hasBorder ? 'pt-2 border-t' : ''} py-1 px-2 -mx-2 rounded`}
+                              >
+                                <span className={`text-sm ${item.isMuted ? 'font-medium' : 'text-muted-foreground'}`}>
+                                  {item.label}
+                                </span>
+                                <span className={`text-sm font-medium ${item.color}`}>{item.value}</span>
+                              </div>
+                            ))}
                           </div>
                         </AccordionContent>
                       </AccordionItem>
