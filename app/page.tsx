@@ -59,7 +59,7 @@ export default function HomePage() {
             <Button
               onClick={handleCheckInteractions}
               disabled={selectedItems.length < 2}
-              className="w-full sm:w-[280px]"
+              className="w-full sm:w-[280px] disabled:opacity-100 disabled:bg-primary disabled:text-white"
               size="lg"
             >
               Check interactions
